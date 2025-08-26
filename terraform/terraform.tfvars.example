@@ -1,0 +1,63 @@
+# AWS Configuration
+aws_region  = "us-east-1"
+environment = "dev"
+
+# Application Configuration
+app_name       = "cognito-demo"
+user_pool_name = "cognito-demo-user-pool"
+
+# Optional: Create a Cognito domain (must be globally unique)
+# create_user_pool_domain = true
+# user_pool_domain       = "your-unique-domain-prefix"
+
+# User Registration Settings
+allow_self_signup = false  # Set to true to allow self-registration
+
+# Email Configuration
+# To use Amazon SES instead of Cognito default email:
+# email_sending_account = "DEVELOPER"
+# ses_email_arn        = "arn:aws:ses:us-east-1:123456789012:identity/noreply@example.com"
+# ses_from_email       = "noreply@example.com"
+# ses_reply_to_email   = "support@example.com"
+
+# Security Settings
+advanced_security_mode = "AUDIT"  # Options: OFF, AUDIT, ENFORCED
+track_devices         = true
+deletion_protection   = "ACTIVE"   # Set to INACTIVE for testing
+
+# Admin User Creation
+create_admin_user = true  # Creates IAM user with admin permissions
+
+# Callback URLs for OAuth flows (if using hosted UI)
+callback_urls = [
+  "http://localhost:8080/callback",
+  "http://localhost:3000/callback"
+]
+
+logout_urls = [
+  "http://localhost:8080/",
+  "http://localhost:3000/"
+]
+
+# Lambda Triggers (optional)
+# enable_lambda_triggers = true
+# lambda_triggers = {
+#   pre_sign_up         = "arn:aws:lambda:us-east-1:123456789012:function:pre-signup"
+#   custom_message      = "arn:aws:lambda:us-east-1:123456789012:function:custom-message"
+#   post_authentication = "arn:aws:lambda:us-east-1:123456789012:function:post-auth"
+# }
+
+# Analytics Configuration (optional)
+# enable_analytics           = true
+# analytics_application_id   = "your-pinpoint-app-id"
+# analytics_application_arn  = "arn:aws:mobiletargeting:us-east-1:123456789012:apps/your-app-id"
+# analytics_role_arn        = "arn:aws:iam::123456789012:role/cognito-analytics-role"
+# analytics_user_data_shared = false
+
+# Resource Tags
+default_tags = {
+  Project     = "CognitoDemo"
+  Environment = "Development"
+  ManagedBy   = "Terraform"
+  Owner       = "DevTeam"
+}

@@ -1,0 +1,392 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS Cognito User Pool with MFA, complex password policy, and unverified user creation'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    Description: Environment name
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  AppName:
+    Type: String
+    Default: cognito-demo
+    Description: Application name
+
+  UserPoolName:
+    Type: String
+    Default: cognito-demo-user-pool
+    Description: Name of the Cognito User Pool
+
+  AllowSelfSignup:
+    Type: String
+    Default: 'false'
+    Description: Whether to allow users to sign up themselves
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+  AdvancedSecurityMode:
+    Type: String
+    Default: AUDIT
+    Description: Advanced security mode
+    AllowedValues:
+      - 'OFF'
+      - AUDIT
+      - ENFORCED
+
+  TrackDevices:
+    Type: String
+    Default: 'true'
+    Description: Whether to track devices for added security
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+  DeletionProtection:
+    Type: String
+    Default: ACTIVE
+    Description: Whether to enable deletion protection
+    AllowedValues:
+      - ACTIVE
+      - INACTIVE
+
+  CreateAdminUser:
+    Type: String
+    Default: 'true'
+    Description: Whether to create an IAM user for admin operations
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+  EmailSendingAccount:
+    Type: String
+    Default: COGNITO_DEFAULT
+    Description: Email sending account type
+    AllowedValues:
+      - COGNITO_DEFAULT
+      - DEVELOPER
+
+  SESEmailArn:
+    Type: String
+    Default: ''
+    Description: SES email identity ARN (required if EmailSendingAccount is DEVELOPER)
+
+  SESFromEmail:
+    Type: String
+    Default: ''
+    Description: From email address for SES
+
+  SESReplyToEmail:
+    Type: String
+    Default: ''
+    Description: Reply-to email address for SES
+
+Conditions:
+  CreateAdminUserCondition: !Equals [!Ref CreateAdminUser, 'true']
+  UseSES: !Equals [!Ref EmailSendingAccount, 'DEVELOPER']
+  AllowSelfSignupCondition: !Equals [!Ref AllowSelfSignup, 'true']
+  TrackDevicesCondition: !Equals [!Ref TrackDevices, 'true']
+
+Resources:
+  # Random string for external IDs
+  RandomString:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt RandomStringFunction.Arn
+
+  RandomStringFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-random-string'
+      Runtime: python3.9
+      Handler: index.handler
+      Role: !GetAtt RandomStringFunctionRole.Arn
+      Code:
+        ZipFile: |
+          import random
+          import string
+          import cfnresponse
+          def handler(event, context):
+              if event['RequestType'] == 'Create':
+                  random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {'RandomString': random_str})
+              else:
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+
+  RandomStringFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # IAM Role for SMS sending
+  CognitoSMSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${UserPoolName}-cognito-sms-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cognito-idp.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                'sts:ExternalId': !Sub 'cognito-sms-external-id-${RandomString.RandomString}'
+      Policies:
+        - PolicyName: !Sub '${UserPoolName}-cognito-sms-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: CognitoDemo
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # Cognito User Pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Ref UserPoolName
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes: []  # No auto-verification - users must verify
+      UsernameConfiguration:
+        CaseSensitive: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+          TemporaryPasswordValidityDays: 7
+      MfaConfiguration: 'ON'
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+        - SMS_MFA
+      SmsConfiguration:
+        ExternalId: !Sub 'cognito-sms-external-id-${RandomString.RandomString}'
+        SnsCallerArn: !GetAtt CognitoSMSRole.Arn
+        SnsRegion: !Ref AWS::Region
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      EmailConfiguration:
+        EmailSendingAccount: !Ref EmailSendingAccount
+        SourceArn: !If [UseSES, !Ref SESEmailArn, !Ref AWS::NoValue]
+        From: !If [UseSES, !Ref SESFromEmail, !Ref AWS::NoValue]
+        ReplyToEmailAddress: !If [UseSES, !Ref SESReplyToEmail, !Ref AWS::NoValue]
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false  # Immutable email
+          DeveloperOnlyAttribute: false
+          StringAttributeConstraints:
+            MinLength: '0'
+            MaxLength: '2048'
+        - Name: phone_number
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+          DeveloperOnlyAttribute: false
+          StringAttributeConstraints:
+            MinLength: '0'
+            MaxLength: '2048'
+        - Name: email_immutable
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+          DeveloperOnlyAttribute: false
+          StringAttributeConstraints:
+            MinLength: '0'
+            MaxLength: '256'
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: !If [AllowSelfSignupCondition, false, true]
+        InviteMessageTemplate:
+          EmailSubject: !Sub 'Your temporary password for ${AppName}'
+          EmailMessage: 'Your username is {username} and temporary password is {####}. Please change it on first login and verify your email.'
+          SMSMessage: 'Your username is {username} and temporary password is {####}'
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: !Sub 'Verify your email for ${AppName}'
+        EmailMessage: 'Your verification code is {####}'
+        SmsMessage: 'Your verification code is {####}'
+      UserPoolAddOns:
+        AdvancedSecurityMode: !Ref AdvancedSecurityMode
+      DeviceConfiguration:
+        ChallengeRequiredOnNewDevice: !If [TrackDevicesCondition, true, false]
+        DeviceOnlyRememberedOnUserPrompt: false
+      DeletionProtection: !Ref DeletionProtection
+      UserPoolTags:
+        Name: !Ref UserPoolName
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+        Project: CognitoDemo
+
+  # Cognito User Pool Client
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub '${AppName}-web-client'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false  # No client secret for public clients
+      RefreshTokenValidity: 60  # 60 days to match password expiration
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      AllowedOAuthFlows: []  # Not using OAuth flows
+      AllowedOAuthFlowsUserPoolClient: false
+      AllowedOAuthScopes: []
+      CallbackURLs:
+        - 'http://localhost:8080/callback'
+        - 'http://localhost:3000/callback'
+      LogoutURLs:
+        - 'http://localhost:8080/'
+        - 'http://localhost:3000/'
+      SupportedIdentityProviders:
+        - COGNITO
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+      PreventUserExistenceErrors: ENABLED
+      ReadAttributes:
+        - email
+        - email_verified
+        - phone_number
+        - phone_number_verified
+        - custom:email_immutable
+      WriteAttributes:
+        - email
+        - phone_number
+      EnableTokenRevocation: true
+      EnablePropagateAdditionalUserContextData: false
+
+  # Optional: Admin IAM User
+  CognitoAdminUser:
+    Type: AWS::IAM::User
+    Condition: CreateAdminUserCondition
+    Properties:
+      UserName: !Sub '${UserPoolName}-admin'
+      Path: /cognito/
+      Policies:
+        - PolicyName: !Sub '${UserPoolName}-admin-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminDeleteUser
+                  - cognito-idp:AdminUpdateUserAttributes
+                  - cognito-idp:AdminSetUserPassword
+                  - cognito-idp:AdminSetUserMFAPreference
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:AdminListGroupsForUser
+                  - cognito-idp:AdminAddUserToGroup
+                  - cognito-idp:AdminRemoveUserFromGroup
+                  - cognito-idp:AdminResetUserPassword
+                  - cognito-idp:AdminEnableUser
+                  - cognito-idp:AdminDisableUser
+                  - cognito-idp:AdminConfirmSignUp
+                  - cognito-idp:ListUsers
+                  - cognito-idp:ListGroups
+                Resource: !GetAtt UserPool.Arn
+      Tags:
+        - Key: Purpose
+          Value: Cognito Admin Operations
+        - Key: Project
+          Value: CognitoDemo
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  CognitoAdminAccessKey:
+    Type: AWS::IAM::AccessKey
+    Condition: CreateAdminUserCondition
+    Properties:
+      UserName: !Ref CognitoAdminUser
+
+Outputs:
+  UserPoolId:
+    Description: ID of the Cognito User Pool
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolId'
+
+  UserPoolArn:
+    Description: ARN of the Cognito User Pool
+    Value: !GetAtt UserPool.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolArn'
+
+  ClientId:
+    Description: ID of the Cognito User Pool Client
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub '${AWS::StackName}-ClientId'
+
+  AdminUserName:
+    Condition: CreateAdminUserCondition
+    Description: Name of the IAM user for admin operations
+    Value: !Ref CognitoAdminUser
+
+  AdminAccessKeyId:
+    Condition: CreateAdminUserCondition
+    Description: Access key ID for the admin IAM user
+    Value: !Ref CognitoAdminAccessKey
+
+  AdminSecretAccessKey:
+    Condition: CreateAdminUserCondition
+    Description: Secret access key for the admin IAM user
+    Value: !GetAtt CognitoAdminAccessKey.SecretAccessKey
+
+  Region:
+    Description: AWS region where the User Pool is created
+    Value: !Ref AWS::Region
+
+  EnvFileContent:
+    Description: Content for .env file (copy this to .env in the project root)
+    Value: !Sub |
+      # AWS Cognito Configuration
+      COGNITO_USER_POOL_ID=${UserPool}
+      COGNITO_CLIENT_ID=${UserPoolClient}
+      AWS_REGION=${AWS::Region}
+      
+      # AWS Admin Credentials (for admin scripts only)
+      AWS_ACCESS_KEY_ID=${CognitoAdminAccessKey}
+      AWS_SECRET_ACCESS_KEY=${CognitoAdminAccessKey.SecretAccessKey}
+
+  HtmlConfigUpdate:
+    Description: JavaScript configuration to update in public/index.html
+    Value: !Sub |
+      // Update these lines in public/index.html (around line 284-285):
+      const cognitoConfig = {
+          UserPoolId: '${UserPool}',
+          ClientId: '${UserPoolClient}'
+      };

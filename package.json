@@ -1,0 +1,19 @@
+{
+  "name": "cognito-demo",
+  "version": "1.0.0",
+  "description": "AWS Cognito authentication demo with admin and client scripts",
+  "type": "module",
+  "scripts": {
+    "admin:register": "node scripts/admin-register.js",
+    "client:auth": "node scripts/client-auth.js",
+    "serve": "npx http-server -p 8080"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.600.0",
+    "amazon-cognito-identity-js": "^6.3.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}

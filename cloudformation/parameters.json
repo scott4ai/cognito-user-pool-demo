@@ -1,0 +1,50 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "AppName",
+    "ParameterValue": "cognito-demo"
+  },
+  {
+    "ParameterKey": "UserPoolName",
+    "ParameterValue": "cognito-demo-user-pool"
+  },
+  {
+    "ParameterKey": "AllowSelfSignup",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "AdvancedSecurityMode",
+    "ParameterValue": "AUDIT"
+  },
+  {
+    "ParameterKey": "TrackDevices",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "DeletionProtection",
+    "ParameterValue": "ACTIVE"
+  },
+  {
+    "ParameterKey": "CreateAdminUser",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "EmailSendingAccount",
+    "ParameterValue": "COGNITO_DEFAULT"
+  },
+  {
+    "ParameterKey": "SESEmailArn",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "SESFromEmail",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "SESReplyToEmail",
+    "ParameterValue": ""
+  }
+]
