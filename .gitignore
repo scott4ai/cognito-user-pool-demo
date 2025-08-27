@@ -9,3 +9,12 @@ yarn-error.log*
 *.log
 dist/
 build/
+
+# Local configuration - don't commit actual credentials
+public/index.html
+
+# Terraform state files - contain sensitive data
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/.terraform.lock.hcl

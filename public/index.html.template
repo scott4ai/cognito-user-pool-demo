@@ -232,9 +232,14 @@
     <script type="module">
         import { CognitoUserPool, CognitoUser, AuthenticationDetails } from 'https://unpkg.com/amazon-cognito-identity-js@6.3.0/dist/amazon-cognito-identity-js.esm.js';
         
+        // SETUP INSTRUCTIONS:
+        // 1. Copy this file: cp public/index.html.template public/index.html
+        // 2. Run terraform to create infrastructure: cd terraform && terraform apply
+        // 3. Get your values: terraform output
+        // 4. Replace the placeholder values below with your actual values
         const cognitoConfig = {
-            UserPoolId: 'YOUR_USER_POOL_ID',
-            ClientId: 'YOUR_CLIENT_ID'
+            UserPoolId: 'YOUR_USER_POOL_ID',  // Get from: terraform output user_pool_id
+            ClientId: 'YOUR_CLIENT_ID'         // Get from: terraform output client_id
         };
         
         const userPool = new CognitoUserPool({
