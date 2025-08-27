@@ -164,6 +164,18 @@
 <body>
     <div class="container">
         <h1>AWS Cognito Demo</h1>
+        <div class="instructions" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; color: #666;">
+            <strong>Testing Instructions:</strong>
+            <ol style="margin: 10px 0; padding-left: 20px;">
+                <li><strong>Get Credentials:</strong> Run <code>node scripts/admin-register.js</code> to create user and get temporary password</li>
+                <li><strong>First Login:</strong> Use email and temporary password → You'll be prompted to change password</li>
+                <li><strong>MFA Setup:</strong> Choose SMS or TOTP authenticator → Follow setup instructions</li>
+                <li><strong>Subsequent Logins:</strong> Use email + new password → Complete MFA challenge</li>
+                <li><strong>Success:</strong> View user info, tokens, and session details</li>
+            </ol>
+            <p style="margin: 5px 0;"><em>Note: User must be verified in AWS Console if verification emails/SMS aren't received.</em></p>
+            <p style="margin: 5px 0; color: #d9534f;"><strong>SMS Issues?</strong> If SMS isn't working, select TOTP/Authenticator App instead. SMS requires AWS SNS configuration and spending limits.</p>
+        </div>
         
         <div id="messageBox" class="message hidden"></div>
         
@@ -203,6 +215,10 @@
                     <input type="text" id="mfaCode" required placeholder="Enter 6-digit code" maxlength="6">
                 </div>
                 <button type="submit">Verify MFA</button>
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+                    <p style="color: #666; font-size: 14px;">Not receiving SMS?</p>
+                    <button type="button" onclick="switchToTOTP()" style="background: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; margin-top: 5px;">Switch to Authenticator App</button>
+                </div>
             </form>
             
             <form id="mfaSetupForm" class="hidden">
@@ -210,11 +226,20 @@
                     <label>MFA Setup Required</label>
                     <p style="color: #666; font-size: 14px; margin: 10px 0;">Choose your preferred MFA method:</p>
                     <select id="mfaMethod" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 10px;">
-                        <option value="SMS">SMS</option>
                         <option value="TOTP">Authenticator App (TOTP)</option>
+                        <option value="SMS">SMS (requires phone number)</option>
                     </select>
                 </div>
                 <button type="submit">Setup MFA</button>
+            </form>
+            
+            <form id="totpVerifyForm" class="hidden">
+                <div class="form-group">
+                    <label>Verify TOTP Setup</label>
+                    <p style="color: #666; font-size: 14px; margin: 10px 0;">Enter the 6-digit code from your authenticator app:</p>
+                    <input type="text" id="totpCode" placeholder="000000" required style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px;">
+                </div>
+                <button type="submit">Verify TOTP</button>
             </form>
         </div>
         
@@ -224,13 +249,18 @@
                 <p><strong>Email:</strong> <span id="userEmail"></span></p>
                 <p><strong>Session:</strong> Valid</p>
                 <p><strong>Token Expires:</strong> <span id="tokenExpiry"></span></p>
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+                    <h4 style="margin-bottom: 10px;">MFA Management</h4>
+                    <p><strong>Current MFA:</strong> <span id="mfaType">Checking...</span></p>
+                    <button onclick="resetMFA()" style="margin-top: 10px; padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer;">Change MFA Method</button>
+                </div>
             </div>
             <button class="logout-btn" onclick="signOut()">Sign Out</button>
         </div>
     </div>
 
-    <script type="module">
-        import { CognitoUserPool, CognitoUser, AuthenticationDetails } from 'https://unpkg.com/amazon-cognito-identity-js@6.3.0/dist/amazon-cognito-identity-js.esm.js';
+    <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.3.0/dist/amazon-cognito-identity.min.js"></script>
+    <script>
         
         // SETUP INSTRUCTIONS:
         // 1. Copy this file: cp public/index.html.template public/index.html
@@ -242,7 +272,7 @@
             ClientId: 'YOUR_CLIENT_ID'         // Get from: terraform output client_id
         };
         
-        const userPool = new CognitoUserPool({
+        const userPool = new AmazonCognitoIdentity.CognitoUserPool({
             UserPoolId: cognitoConfig.UserPoolId,
             ClientId: cognitoConfig.ClientId
         });
@@ -270,6 +300,7 @@
             const messageBox = document.getElementById('messageBox');
             messageBox.textContent = message;
             messageBox.className = `message ${type}`;
+            messageBox.classList.remove('hidden');
         }
         
         function hideMessage() {
@@ -283,6 +314,18 @@
             
             const expiry = new Date(session.getAccessToken().getExpiration() * 1000);
             document.getElementById('tokenExpiry').textContent = expiry.toLocaleString();
+            
+            // Check MFA type
+            if (currentUser) {
+                currentUser.getUserData((err, userData) => {
+                    if (!err && userData.UserAttributes) {
+                        // Check for MFA preferences in user data
+                        document.getElementById('mfaType').textContent = 'TOTP/SMS configured';
+                    } else {
+                        document.getElementById('mfaType').textContent = 'Configured';
+                    }
+                });
+            }
         }
         
         function showAuthSection() {
@@ -291,6 +334,41 @@
             switchTab('signin');
         }
         
+        // Common MFA callback handlers
+        const mfaCallbacks = {
+            mfaSetup: (challengeName, challengeParameters) => {
+                console.log('MFA Setup callback triggered', challengeName, challengeParameters);
+                hideMessage();
+                document.querySelectorAll('form').forEach(f => f.classList.add('hidden'));
+                document.getElementById('mfaSetupForm').classList.remove('hidden');
+                showMessage('MFA setup required - please select a method', 'info');
+            },
+            
+            selectMFAType: (challengeName, challengeParameters) => {
+                console.log('Select MFA Type callback triggered', challengeName, challengeParameters);
+                hideMessage();
+                document.querySelectorAll('form').forEach(f => f.classList.add('hidden'));
+                document.getElementById('mfaSetupForm').classList.remove('hidden');
+                showMessage('Choose your MFA method', 'info');
+            },
+            
+            mfaRequired: (challengeName, challengeParameters) => {
+                console.log('MFA Required callback triggered', challengeName, challengeParameters);
+                hideMessage();
+                document.querySelectorAll('form').forEach(f => f.classList.add('hidden'));
+                document.getElementById('mfaForm').classList.remove('hidden');
+                showMessage('Enter your MFA code', 'info');
+            },
+            
+            totpRequired: (challengeName, challengeParameters) => {
+                console.log('TOTP Required callback triggered', challengeName, challengeParameters);
+                hideMessage();
+                document.querySelectorAll('form').forEach(f => f.classList.add('hidden'));
+                document.getElementById('mfaForm').classList.remove('hidden');
+                showMessage('Enter TOTP code from your authenticator app', 'info');
+            }
+        };
+        
         document.getElementById('signinForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             hideMessage();
@@ -298,12 +376,12 @@
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             
-            const authenticationDetails = new AuthenticationDetails({
+            const authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails({
                 Username: email,
                 Password: password
             });
             
-            currentUser = new CognitoUser({
+            currentUser = new AmazonCognitoIdentity.CognitoUser({
                 Username: email,
                 Pool: userPool
             });
@@ -315,6 +393,7 @@
                 },
                 
                 onFailure: (err) => {
+                    console.error('Authentication failed:', err);
                     showMessage(`Authentication failed: ${err.message}`, 'error');
                 },
                 
@@ -324,23 +403,11 @@
                     switchTab('newpassword');
                 },
                 
-                mfaSetup: (challengeName, challengeParameters) => {
-                    document.getElementById('signinForm').classList.add('hidden');
-                    document.getElementById('mfaSetupForm').classList.remove('hidden');
-                    showMessage('MFA setup required', 'info');
-                },
-                
-                mfaRequired: (challengeName, challengeParameters) => {
-                    document.getElementById('signinForm').classList.add('hidden');
-                    document.getElementById('mfaForm').classList.remove('hidden');
-                    showMessage('Enter your MFA code', 'info');
-                },
-                
-                totpRequired: (challengeName, challengeParameters) => {
-                    document.getElementById('signinForm').classList.add('hidden');
-                    document.getElementById('mfaForm').classList.remove('hidden');
-                    showMessage('Enter TOTP code from your authenticator app', 'info');
-                }
+                // MFA callbacks
+                mfaSetup: mfaCallbacks.mfaSetup,
+                selectMFAType: mfaCallbacks.selectMFAType,
+                mfaRequired: mfaCallbacks.mfaRequired,
+                totpRequired: mfaCallbacks.totpRequired
             });
         });
         
@@ -367,13 +434,15 @@
                     showUserSection(newPasswordUser.getUsername(), result);
                 },
                 onFailure: (err) => {
+                    console.error('Password change failed:', err);
                     showMessage(`Password change failed: ${err.message}`, 'error');
                 },
-                mfaSetup: (challengeName, challengeParameters) => {
-                    document.getElementById('newPasswordForm').classList.add('hidden');
-                    document.getElementById('mfaSetupForm').classList.remove('hidden');
-                    showMessage('MFA setup required', 'info');
-                }
+                
+                // MFA callbacks for new password flow
+                mfaSetup: mfaCallbacks.mfaSetup,
+                selectMFAType: mfaCallbacks.selectMFAType,
+                mfaRequired: mfaCallbacks.mfaRequired,
+                totpRequired: mfaCallbacks.totpRequired
             });
         });
         
@@ -383,36 +452,161 @@
             
             const mfaCode = document.getElementById('mfaCode').value;
             
+            if (!currentUser) {
+                showMessage('No active user session', 'error');
+                return;
+            }
+            
             currentUser.sendMFACode(mfaCode, {
                 onSuccess: (result) => {
                     showMessage('MFA verification successful!', 'success');
                     showUserSection(currentUser.getUsername(), result);
                 },
                 onFailure: (err) => {
+                    console.error('MFA verification failed:', err);
                     showMessage(`MFA verification failed: ${err.message}`, 'error');
                 }
-            });
+            }, 'SOFTWARE_TOKEN_MFA');
         });
         
         document.getElementById('mfaSetupForm').addEventListener('submit', (e) => {
             e.preventDefault();
-            showMessage('MFA setup would be handled here. For full setup, use the Node.js scripts.', 'info');
+            hideMessage();
+            const mfaMethod = document.getElementById('mfaMethod').value;
+            
+            const userForSetup = newPasswordUser || currentUser;
+            if (!userForSetup) {
+                showMessage('Session error. Please sign in again.', 'error');
+                return;
+            }
+            
+            if (mfaMethod === 'TOTP') {
+                // Setup TOTP
+                userForSetup.associateSoftwareToken({
+                    onSuccess: (result) => {
+                        showMessage(`Add this secret to your authenticator app: ${result}`, 'info');
+                        document.getElementById('mfaSetupForm').classList.add('hidden');
+                        document.getElementById('totpVerifyForm').classList.remove('hidden');
+                    },
+                    onFailure: (err) => {
+                        console.error('TOTP setup failed:', err);
+                        showMessage(`TOTP setup failed: ${err.message}`, 'error');
+                    },
+                    associateSecretCode: (secretCode) => {
+                        showMessage(`Add this secret to your authenticator app: ${secretCode}`, 'info');
+                        document.getElementById('mfaSetupForm').classList.add('hidden');
+                        document.getElementById('totpVerifyForm').classList.remove('hidden');
+                    }
+                });
+            } else if (mfaMethod === 'SMS') {
+                // Enable SMS MFA
+                userForSetup.enableMFA({
+                    onSuccess: (result) => {
+                        showMessage('SMS MFA enabled successfully', 'success');
+                        if (newPasswordUser) {
+                            showUserSection(newPasswordUser.getUsername(), result);
+                        } else {
+                            document.getElementById('mfaSetupForm').classList.add('hidden');
+                            document.getElementById('mfaForm').classList.remove('hidden');
+                        }
+                    },
+                    onFailure: (err) => {
+                        console.error('SMS MFA setup failed:', err);
+                        showMessage(`SMS setup failed: ${err.message}`, 'error');
+                    }
+                });
+            }
         });
+        
+        document.getElementById('totpVerifyForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            hideMessage();
+            const totpCode = document.getElementById('totpCode').value;
+            
+            const userForVerify = newPasswordUser || currentUser;
+            if (!userForVerify) {
+                showMessage('Session error. Please sign in again.', 'error');
+                return;
+            }
+            
+            userForVerify.verifySoftwareToken(totpCode, 'My Authenticator', {
+                onSuccess: (result) => {
+                    showMessage('TOTP setup complete!', 'success');
+                    document.getElementById('totpVerifyForm').classList.add('hidden');
+                    if (newPasswordUser) {
+                        showUserSection(newPasswordUser.getUsername(), result);
+                    } else {
+                        switchTab('signin');
+                    }
+                },
+                onFailure: (err) => {
+                    console.error('TOTP verification failed:', err);
+                    showMessage(`TOTP verification failed: ${err.message}`, 'error');
+                }
+            });
+        });
+        
+        window.switchToTOTP = function() {
+            if (!currentUser) {
+                showMessage('No user session', 'error');
+                return;
+            }
+            
+            // Hide MFA form and show TOTP setup
+            document.getElementById('mfaForm').classList.add('hidden');
+            showMessage('Setting up authenticator app...', 'info');
+            
+            // Associate TOTP device
+            currentUser.associateSoftwareToken({
+                onSuccess: (secret) => {
+                    showMessage(`Add this secret to your authenticator app: ${secret}`, 'info');
+                    document.getElementById('totpVerifyForm').classList.remove('hidden');
+                },
+                onFailure: (err) => {
+                    console.error('TOTP setup failed:', err);
+                    showMessage(`Failed to setup TOTP: ${err.message}`, 'error');
+                    document.getElementById('mfaForm').classList.remove('hidden');
+                },
+                associateSecretCode: (secretCode) => {
+                    showMessage(`Add this secret to your authenticator app: ${secretCode}`, 'info');
+                    document.getElementById('totpVerifyForm').classList.remove('hidden');
+                }
+            });
+        }
+        
+        window.resetMFA = function() {
+            if (!currentUser) {
+                showMessage('No user logged in', 'error');
+                return;
+            }
+            
+            // Reset MFA and show setup options
+            if (confirm('This will reset your MFA settings. You will need to set up MFA again. Continue?')) {
+                showMessage('Resetting MFA...', 'info');
+                // Show MFA setup form
+                document.getElementById('userSection').classList.add('hidden');
+                document.getElementById('mfaSetupForm').classList.remove('hidden');
+            }
+        }
         
         window.signOut = function() {
             if (currentUser) {
                 currentUser.signOut();
             }
+            currentUser = null;
+            newPasswordUser = null;
             showMessage('Signed out successfully', 'success');
             showAuthSection();
             document.getElementById('email').value = '';
             document.getElementById('password').value = '';
         };
         
+        // Check for existing session on load
         const cognitoUser = userPool.getCurrentUser();
         if (cognitoUser) {
             cognitoUser.getSession((err, session) => {
                 if (err) {
+                    console.error('Session error:', err);
                     showAuthSection();
                 } else if (session.isValid()) {
                     currentUser = cognitoUser;
