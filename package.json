@@ -6,7 +6,7 @@
   "scripts": {
     "admin:register": "node scripts/admin-register.js",
     "client:auth": "node scripts/client-auth.js",
-    "serve": "npx http-server -p 8080"
+    "serve": "npx http-server public -p 8080"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.600.0",
