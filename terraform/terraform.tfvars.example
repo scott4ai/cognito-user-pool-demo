@@ -23,7 +23,7 @@ allow_self_signup = false  # Set to true to allow self-registration
 # Security Settings
 advanced_security_mode = "AUDIT"  # Options: OFF, AUDIT, ENFORCED
 track_devices         = true
-deletion_protection   = "ACTIVE"   # Set to INACTIVE for testing
+deletion_protection   = "INACTIVE" # Set to ACTIVE for production, INACTIVE for easy dev/test cleanup
 
 # Admin User Creation
 create_admin_user = true  # Creates IAM user with admin permissions

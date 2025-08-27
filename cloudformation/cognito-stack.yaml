@@ -48,8 +48,8 @@ Parameters:
 
   DeletionProtection:
     Type: String
-    Default: ACTIVE
-    Description: Whether to enable deletion protection
+    Default: INACTIVE
+    Description: Whether to enable deletion protection. Use INACTIVE for development/testing to allow easy cleanup
     AllowedValues:
       - ACTIVE
       - INACTIVE

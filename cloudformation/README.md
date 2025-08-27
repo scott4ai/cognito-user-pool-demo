@@ -44,7 +44,7 @@ aws cloudformation describe-stacks \
 | `AllowSelfSignup` | false | Allow users to self-register |
 | `AdvancedSecurityMode` | AUDIT | Security mode (OFF/AUDIT/ENFORCED) |
 | `TrackDevices` | true | Enable device tracking |
-| `DeletionProtection` | ACTIVE | Prevent accidental deletion |
+| `DeletionProtection` | INACTIVE | Prevent accidental deletion (INACTIVE for dev/test) |
 | `CreateAdminUser` | true | Create IAM admin user |
 | `EmailSendingAccount` | COGNITO_DEFAULT | Email service (COGNITO_DEFAULT/DEVELOPER) |
 

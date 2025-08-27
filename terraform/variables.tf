@@ -99,9 +99,9 @@ variable "track_devices" {
 }
 
 variable "deletion_protection" {
-  description = "Whether to enable deletion protection for the User Pool"
+  description = "Whether to enable deletion protection for the User Pool. Set to INACTIVE for development/testing to allow easy cleanup"
   type        = string
-  default     = "ACTIVE"
+  default     = "INACTIVE"
   
   validation {
     condition     = contains(["ACTIVE", "INACTIVE"], var.deletion_protection)
