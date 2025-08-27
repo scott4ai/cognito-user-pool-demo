@@ -48,6 +48,18 @@ aws cloudformation describe-stacks \
 | `CreateAdminUser` | true | Create IAM admin user |
 | `EmailSendingAccount` | COGNITO_DEFAULT | Email service (COGNITO_DEFAULT/DEVELOPER) |
 
+## Create Admin Users
+
+After stack creation, you can use the Node.js admin registration script:
+
+```bash
+# Create admin user (requires REAL, verifiable email and phone)
+# Both email and phone will receive verification codes
+node scripts/admin-register.js user@example.com +1234567890
+```
+
+⚠️ **IMPORTANT**: Use real, verifiable email and phone numbers as both will receive verification codes that must be confirmed.
+
 ## Get Configuration for App
 
 After stack creation, get your configuration:

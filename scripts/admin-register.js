@@ -39,18 +39,20 @@ class AdminUserRegistration {
 
   async createUser(email, temporaryPassword, phoneNumber) {
     try {
-      const createUserParams = {
-        UserPoolId: adminConfig.userPoolId,
-        Username: email,
-        UserAttributes: [
-          {
-            Name: 'email',
-            Value: email
-          },
-          {
-            Name: 'email_verified',
-            Value: 'false'  // User must verify email
-          },
+      const userAttributes = [
+        {
+          Name: 'email',
+          Value: email
+        },
+        {
+          Name: 'email_verified',
+          Value: 'false'  // User must verify email
+        }
+      ];
+
+      // Only add phone attributes if phone number provided
+      if (phoneNumber) {
+        userAttributes.push(
           {
             Name: 'phone_number',
             Value: phoneNumber
@@ -59,7 +61,13 @@ class AdminUserRegistration {
             Name: 'phone_number_verified',
             Value: 'false'  // User must verify phone
           }
-        ],
+        );
+      }
+
+      const createUserParams = {
+        UserPoolId: adminConfig.userPoolId,
+        Username: email,
+        UserAttributes: userAttributes,
         TemporaryPassword: temporaryPassword,
         MessageAction: 'SUPPRESS',
         DesiredDeliveryMediums: ['EMAIL']
@@ -84,7 +92,11 @@ class AdminUserRegistration {
       console.log('✅ Temporary password set successfully');
       console.log('   Email:', email);
       console.log('   Temporary Password:', temporaryPassword);
-      console.log('   Phone Number:', phoneNumber);
+      if (phoneNumber) {
+        console.log('   Phone Number:', phoneNumber);
+      } else {
+        console.log('   Phone Number: Not provided (will use TOTP for MFA)');
+      }
       console.log('\n⚠️  Important: User must verify email and phone number');
       console.log('⚠️  User must change password on first login');
       console.log('⚠️  MFA will be enforced after verification and password change');
@@ -132,15 +144,23 @@ async function main() {
   }
 
   try {
-    const email = await question('Enter user email: ');
-    const phoneNumber = await question('Enter phone number (format: +1234567890): ');
+    // Check for command line arguments first
+    const email = process.argv[2] || await question('Enter user email (MUST be a real, verifiable email address): ');
+    const phoneNumber = process.argv[3] || await question('Enter phone number (OPTIONAL - press Enter to skip, format: +1234567890): ');
     
     if (!email || !email.includes('@')) {
       throw new Error('Invalid email address');
     }
 
-    if (!phoneNumber || !phoneNumber.startsWith('+')) {
-      throw new Error('Phone number must start with + and country code');
+    if (phoneNumber && !phoneNumber.startsWith('+')) {
+      throw new Error('Phone number must start with + and country code (or leave empty)');
+    }
+
+    if (phoneNumber) {
+      console.log('\n⚠️  IMPORTANT: Both email and phone number will receive verification codes.');
+      console.log('   Make sure you have access to both before proceeding.\n');
+    } else {
+      console.log('\n⚠️  Phone number skipped. User will use TOTP (Authenticator App) for MFA.\n');
     }
 
     const admin = new AdminUserRegistration();
@@ -157,6 +177,13 @@ async function main() {
     console.log('\n📋 Next Steps:');
     console.log('1. Share the temporary password securely with the user');
     console.log('2. User must verify email and phone number');
+    console.log('   • Wait for verification emails/SMS, OR');
+    console.log('   • Manually verify in AWS Console:');
+    console.log('     1. Go to AWS Console → Cognito → User Pools → [Your Pool]');
+    console.log('     2. Click Users → [Username] → Edit User');
+    console.log('     3. Check "Mark phone number as verified" and "Mark email as verified"');
+    console.log('     4. Click Save Changes');
+    console.log('     5. You should now be able to authenticate with the verified user');
     console.log('3. User must log in and change password');
     console.log('4. User will set up MFA after verification');
     console.log('5. Password will expire after 60 days');

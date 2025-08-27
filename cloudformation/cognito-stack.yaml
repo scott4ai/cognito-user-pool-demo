@@ -57,7 +57,7 @@ Parameters:
   CreateAdminUser:
     Type: String
     Default: 'true'
-    Description: Whether to create an IAM user for admin operations
+    Description: Whether to create an IAM user for admin operations. After stack creation, use 'node scripts/admin-register.js' with REAL, verifiable email and phone numbers to create Cognito users.
     AllowedValues:
       - 'true'
       - 'false'
@@ -206,9 +206,11 @@ Resources:
           StringAttributeConstraints:
             MinLength: '0'
             MaxLength: '2048'
+        # Phone number is OPTIONAL - SMS MFA requires expensive AWS origination numbers
+        # Users can use TOTP/Authenticator apps instead of SMS for MFA
         - Name: phone_number
           AttributeDataType: String
-          Required: true
+          Required: false  # Changed to optional - SMS is not viable without paid origination
           Mutable: true
           DeveloperOnlyAttribute: false
           StringAttributeConstraints:

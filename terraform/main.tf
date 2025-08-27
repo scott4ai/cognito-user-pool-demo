@@ -83,10 +83,12 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
+  # Phone number is OPTIONAL - SMS MFA requires expensive AWS origination numbers
+  # Users can use TOTP/Authenticator apps instead of SMS for MFA
   schema {
     name                     = "phone_number"
     attribute_data_type      = "String"
-    required                 = true
+    required                 = false  # Changed to optional - SMS is not viable without paid origination
     mutable                  = true
     developer_only_attribute = false
     

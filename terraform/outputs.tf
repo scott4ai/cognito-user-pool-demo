@@ -85,3 +85,30 @@ const cognitoConfig = {
 };
 EOT
 }
+
+output "sms_sandbox_setup" {
+  description = "SMS Sandbox Configuration Instructions"
+  value = <<-EOT
+
+⚠️  SMS MFA SETUP REQUIRED (if using SMS) ⚠️
+
+AWS accounts are in SMS Sandbox by default. To use SMS MFA:
+
+1. Add phone numbers to sandbox (manual process):
+   aws sns create-sms-sandbox-phone-number --phone-number +1XXXXXXXXXX
+
+2. Enter the verification code you receive:
+   aws sns verify-sms-sandbox-phone-number --phone-number +1XXXXXXXXXX --one-time-password XXXXXX
+
+3. Check sandbox status:
+   aws sns get-sms-sandbox-account-status
+
+For production:
+- Request sandbox removal: AWS Console → SNS → Text messaging → Request production access
+- Increase spending limit: aws sns set-sms-attributes --attributes MonthlySpendLimit=10
+
+Alternative: Use TOTP/Authenticator App instead of SMS (recommended for testing)
+
+Note: Terraform CANNOT automate SMS sandbox verification as it requires interactive SMS codes.
+EOT
+}
