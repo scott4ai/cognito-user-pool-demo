@@ -152,20 +152,30 @@ Options:
 
 ### Web Demo
 
-Launch the browser-based demo:
+Setup and launch the browser-based demo:
 
 ```bash
+# 1. Copy the template to create the HTML file
+cp public/index.html.template public/index.html
+
+# 2. Update the Cognito configuration in public/index.html
+# Replace 'YOUR_USER_POOL_ID' and 'YOUR_CLIENT_ID' with values from:
+terraform output
+
+# 3. Launch the server
 npm run serve
 ```
 
-Visit http://localhost:8080/public/
+Visit http://localhost:8080/
 
 Features:
 - Sign in with email/password
 - First-time password change
-- MFA setup and verification
+- MFA setup and verification (SMS/TOTP)
 - Session management
 - Token display
+
+**Note**: The HTML template includes placeholder Cognito configuration values that must be replaced with your actual User Pool ID and Client ID before use.
 
 ## Project Structure
 
@@ -177,7 +187,8 @@ cognito-demo/
 │   ├── admin-register.js      # Admin user registration
 │   └── client-auth.js         # Client authentication
 ├── public/
-│   └── index.html             # Web demo interface
+│   ├── index.html.template    # Web demo template (requires config)
+│   └── index.html             # Web demo interface (created from template)
 ├── terraform/                 # Terraform deployment option
 │   ├── main.tf                # Terraform Cognito resources
 │   ├── variables.tf           # Terraform variables

@@ -242,6 +242,18 @@ async function registerWithRetry(email, password, retries = 0) {
 ### Issue: MFA setup failing
 **Solution**: Ensure phone number format includes country code (+1234567890)
 
+### Issue: "n.mfaSetup is not a function" error
+**Solution**: This occurs when MFA callback handlers are missing from authentication flows. Ensure both `authenticateUser` and `completeNewPasswordChallenge` include all MFA callbacks: `mfaSetup`, `selectMFAType`, `mfaRequired`, `totpRequired`.
+
+### Issue: "Invalid code or auth state" during MFA verification
+**Solution**: Specify the MFA challenge type when calling `sendMFACode`:
+```javascript
+// For TOTP codes
+currentUser.sendMFACode(mfaCode, callbacks, 'SOFTWARE_TOKEN_MFA');
+// For SMS codes
+currentUser.sendMFACode(mfaCode, callbacks, 'SMS_MFA');
+```
+
 ### Issue: Password change required loop
 **Solution**: Ensure new password meets all complexity requirements
 
